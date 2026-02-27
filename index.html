@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { 
   Calculator, 
   Package, 
@@ -15,7 +18,25 @@ import {
   LogOut
 } from 'lucide-react';
 
+// Firebase Configuration & Initialization (Dari konfigurasi anda)
+const firebaseConfig = {
+  apiKey: "AIzaSyBpIAU2H1E_RD-Kw6nNVjLKz4C88WVW074",
+  authDomain: "rekod-pembelian.firebaseapp.com",
+  projectId: "rekod-pembelian",
+  storageBucket: "rekod-pembelian.firebasestorage.app",
+  messagingSenderId: "686407023060",
+  appId: "1:686407023060:web:8f89674a4f4b86af0ffe41"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'muiz-banner-empire';
+
 export default function App() {
+  // State untuk pengguna awan Firebase (Anonymous auth)
+  const [user, setUser] = useState(null);
+
   // State untuk log masuk
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginData, setLoginData] = useState({ username: '', password: '' });
@@ -37,8 +58,45 @@ export default function App() {
     setLoginData({ ...loginData, [e.target.name]: e.target.value });
   };
 
+  // Auth Effect untuk Firebase Awan
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await signInAnonymously(auth);
+      } catch (error) {
+        console.error("Ralat pengesahan Firebase:", error);
+      }
+    };
+    initAuth();
+    
+    // Pantau status log masuk pangkalan data
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
   // State untuk menyimpan senarai rekod pembelian
   const [records, setRecords] = useState([]);
+
+  // Fetch data dari Firestore
+  useEffect(() => {
+    if (!user) return;
+    
+    // Rujukan lokasi data di dalam Firestore
+    const recordsRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'purchases');
+    
+    // Listener untuk dapatkan data terkini (real-time)
+    const unsubscribe = onSnapshot(recordsRef, (snapshot) => {
+      const data = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      // Susun data dari yang paling baru ke paling lama
+      data.sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
+      setRecords(data);
+    }, (error) => {
+      console.error("Ralat mengambil data dari awan:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
   
   // State untuk borang
   const [formData, setFormData] = useState({
@@ -46,7 +104,8 @@ export default function App() {
     itemName: '',
     quantity: '',
     itemCost: '',
-    shippingCost: ''
+    shippingCost: '',
+    roiPercentage: '300' // Peratusan ROI lalai (default) ditukar ke 300%
   });
 
   // Tetapkan tarikh dan masa semasa pada borang apabila dimuatkan
@@ -69,6 +128,16 @@ export default function App() {
     return '0.00';
   }, [formData.quantity, formData.itemCost, formData.shippingCost]);
 
+  // Pengiraan Cadangan Harga Jualan berdasarkan ROI
+  const calculatedSellingPrice = useMemo(() => {
+    const unit = parseFloat(calculatedUnitCost) || 0;
+    const roi = parseFloat(formData.roiPercentage) || 0;
+    if (unit > 0) {
+      return (unit + (unit * (roi / 100))).toFixed(2);
+    }
+    return '0.00';
+  }, [calculatedUnitCost, formData.roiPercentage]);
+
   // Statistik Keseluruhan
   const stats = useMemo(() => {
     const totalSpent = records.reduce((sum, record) => sum + record.itemCost + record.shippingCost, 0);
@@ -88,38 +157,54 @@ export default function App() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Menyimpan rekod baru
-  const handleSubmit = (e) => {
+  // Menyimpan rekod baru ke Firebase Cloud Firestore
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validasi asas
     if (!formData.itemName || !formData.quantity || !formData.itemCost) return;
+    if (!user) return; // Pastikan sambungan ke pangkalan data wujud
 
+    const newRecordId = Date.now().toString();
     const newRecord = {
-      id: Date.now().toString(),
       dateTime: formData.dateTime,
       itemName: formData.itemName,
       quantity: parseFloat(formData.quantity),
       itemCost: parseFloat(formData.itemCost) || 0,
       shippingCost: parseFloat(formData.shippingCost) || 0,
-      unitCost: parseFloat(calculatedUnitCost)
+      unitCost: parseFloat(calculatedUnitCost),
+      roiPercentage: parseFloat(formData.roiPercentage) || 0,
+      suggestedPrice: parseFloat(calculatedSellingPrice),
+      createdAt: new Date().toISOString() // Simpan masa rekod dibuat
     };
 
-    setRecords([newRecord, ...records]);
-    
-    // Reset form (kecuali masa)
-    setFormData(prev => ({
-      ...prev,
-      itemName: '',
-      quantity: '',
-      itemCost: '',
-      shippingCost: ''
-    }));
+    try {
+      // Simpan di awan
+      const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'purchases', newRecordId);
+      await setDoc(docRef, newRecord);
+      
+      // Reset form (kecuali masa dan ROI supaya tak perlu taip semula setiap kali)
+      setFormData(prev => ({
+        ...prev,
+        itemName: '',
+        quantity: '',
+        itemCost: '',
+        shippingCost: ''
+      }));
+    } catch (error) {
+      console.error("Ralat menyimpan rekod ke awan:", error);
+    }
   };
 
-  // Memadam rekod
-  const deleteRecord = (id) => {
-    setRecords(records.filter(record => record.id !== id));
+  // Memadam rekod dari Firebase Cloud Firestore
+  const deleteRecord = async (id) => {
+    if (!user) return;
+    try {
+      const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'purchases', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Ralat memadam rekod:", error);
+    }
   };
 
   // Format tarikh untuk paparan
@@ -351,21 +436,61 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Sasaran Keuntungan (ROI) */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-600 mb-1">Sasaran Keuntungan / ROI (%)</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      name="roiPercentage"
+                      min="0"
+                      step="0.1"
+                      value={formData.roiPercentage}
+                      onChange={handleChange}
+                      placeholder="Contoh: 300"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400 font-bold">
+                      %
+                    </div>
+                  </div>
+                </div>
+
                 {/* Kalkulator Automatik */}
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm font-semibold text-blue-800 flex items-center">
-                      <Calculator size={16} className="mr-1" />
-                      Harga Modal Sebiji
-                    </span>
+                <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 shadow-inner">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-semibold text-slate-600 flex items-center">
+                        <Calculator size={16} className="mr-1" />
+                        Harga Modal Sebiji
+                      </span>
+                    </div>
+                    <div className="text-2xl font-bold text-slate-800 flex items-center">
+                      <span className="text-base mr-1 text-slate-500">RM</span>
+                      {calculatedUnitCost}
+                    </div>
                   </div>
-                  <div className="text-3xl font-black text-blue-700 flex items-center">
-                    <span className="text-lg mr-1 text-blue-500">RM</span>
-                    {calculatedUnitCost}
+                  
+                  <div className="border-t border-slate-200"></div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-semibold text-emerald-700 flex items-center">
+                        <TrendingUp size={16} className="mr-1" />
+                        Cadangan Harga Jualan
+                      </span>
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        ROI {formData.roiPercentage || 0}%
+                      </span>
+                    </div>
+                    <div className="text-3xl font-black text-emerald-600 flex items-center">
+                      <span className="text-lg mr-1 text-emerald-500">RM</span>
+                      {calculatedSellingPrice}
+                    </div>
+                    <p className="text-xs text-emerald-600 mt-1 font-medium">
+                      Untung Kasar: RM {((parseFloat(calculatedSellingPrice) || 0) - (parseFloat(calculatedUnitCost) || 0)).toFixed(2)} per item
+                    </p>
                   </div>
-                  <p className="text-xs text-blue-600 mt-1">
-                    (Kos Barang + Pos) ÷ Kuantiti
-                  </p>
                 </div>
 
                 <button 
@@ -403,6 +528,7 @@ export default function App() {
                         <th className="p-4 font-semibold whitespace-nowrap">Tarikh/Masa</th>
                         <th className="p-4 font-semibold">Barang</th>
                         <th className="p-4 font-semibold text-right">Modal Sebiji</th>
+                        <th className="p-4 font-semibold text-right">Cadangan Jualan</th>
                         <th className="p-4 font-semibold text-right">Kos Keseluruhan</th>
                         <th className="p-4 font-semibold text-center">Tindakan</th>
                       </tr>
@@ -420,13 +546,21 @@ export default function App() {
                             </div>
                           </td>
                           <td className="p-4 text-right">
-                            <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg text-sm">
+                            <span className="inline-block px-3 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-sm">
                               RM {record.unitCost.toFixed(2)}
                             </span>
                           </td>
+                          <td className="p-4 text-right">
+                            <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg text-sm">
+                              RM {record.suggestedPrice.toFixed(2)}
+                            </span>
+                            <div className="text-xs text-emerald-600 mt-1 font-semibold whitespace-nowrap">
+                              Untung: RM {(record.suggestedPrice - record.unitCost).toFixed(2)} ({record.roiPercentage}%)
+                            </div>
+                          </td>
                           <td className="p-4 text-right text-sm">
                             <div>RM {(record.itemCost + record.shippingCost).toFixed(2)}</div>
-                            <div className="text-xs text-slate-400 mt-1">
+                            <div className="text-xs text-slate-400 mt-1 whitespace-nowrap">
                               (Kos: {record.itemCost.toFixed(2)} + Pos: {record.shippingCost.toFixed(2)})
                             </div>
                           </td>
