@@ -1,0 +1,455 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Calculator, 
+  Package, 
+  Truck, 
+  Calendar, 
+  Plus, 
+  History, 
+  Trash2, 
+  DollarSign,
+  TrendingUp,
+  Box,
+  Lock,
+  User,
+  LogOut
+} from 'lucide-react';
+
+export default function App() {
+  // State untuk log masuk
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginData, setLoginData] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+
+  // Menguruskan proses log masuk
+  const handleLogin = (e) => {
+    e.preventDefault();
+    // Tetapan Username dan Password di sini
+    if (loginData.username === 'admin' && loginData.password === 'muiz123') {
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Username atau password salah!');
+    }
+  };
+
+  const handleLoginChange = (e) => {
+    setLoginData({ ...loginData, [e.target.name]: e.target.value });
+  };
+
+  // State untuk menyimpan senarai rekod pembelian
+  const [records, setRecords] = useState([]);
+  
+  // State untuk borang
+  const [formData, setFormData] = useState({
+    dateTime: '',
+    itemName: '',
+    quantity: '',
+    itemCost: '',
+    shippingCost: ''
+  });
+
+  // Tetapkan tarikh dan masa semasa pada borang apabila dimuatkan
+  useEffect(() => {
+    const now = new Date();
+    // Format yang serasi dengan input type="datetime-local" (YYYY-MM-DDThh:mm)
+    const formattedDateTime = now.toISOString().slice(0, 16);
+    setFormData(prev => ({ ...prev, dateTime: formattedDateTime }));
+  }, []);
+
+  // Pengiraan Harga Modal Sebiji secara "live"
+  const calculatedUnitCost = useMemo(() => {
+    const qty = parseFloat(formData.quantity);
+    const cost = parseFloat(formData.itemCost) || 0;
+    const shipping = parseFloat(formData.shippingCost) || 0;
+
+    if (qty > 0) {
+      return ((cost + shipping) / qty).toFixed(2);
+    }
+    return '0.00';
+  }, [formData.quantity, formData.itemCost, formData.shippingCost]);
+
+  // Statistik Keseluruhan
+  const stats = useMemo(() => {
+    const totalSpent = records.reduce((sum, record) => sum + record.itemCost + record.shippingCost, 0);
+    const totalItems = records.reduce((sum, record) => sum + record.quantity, 0);
+    const totalShipping = records.reduce((sum, record) => sum + record.shippingCost, 0);
+    
+    return {
+      totalSpent: totalSpent.toFixed(2),
+      totalItems,
+      totalShipping: totalShipping.toFixed(2)
+    };
+  }, [records]);
+
+  // Mengendalikan perubahan input
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Menyimpan rekod baru
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Validasi asas
+    if (!formData.itemName || !formData.quantity || !formData.itemCost) return;
+
+    const newRecord = {
+      id: Date.now().toString(),
+      dateTime: formData.dateTime,
+      itemName: formData.itemName,
+      quantity: parseFloat(formData.quantity),
+      itemCost: parseFloat(formData.itemCost) || 0,
+      shippingCost: parseFloat(formData.shippingCost) || 0,
+      unitCost: parseFloat(calculatedUnitCost)
+    };
+
+    setRecords([newRecord, ...records]);
+    
+    // Reset form (kecuali masa)
+    setFormData(prev => ({
+      ...prev,
+      itemName: '',
+      quantity: '',
+      itemCost: '',
+      shippingCost: ''
+    }));
+  };
+
+  // Memadam rekod
+  const deleteRecord = (id) => {
+    setRecords(records.filter(record => record.id !== id));
+  };
+
+  // Format tarikh untuk paparan
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('ms-MY', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  // Paparan halaman log masuk jika belum disahkan
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 w-full max-w-md">
+          <div className="flex justify-center mb-6">
+            <div className="bg-blue-600 p-4 rounded-2xl text-white shadow-lg shadow-blue-200">
+              <Lock size={40} />
+            </div>
+          </div>
+          <h1 className="text-2xl font-bold text-center text-slate-900 mb-2">Log Masuk Sistem</h1>
+          <p className="text-center text-slate-500 mb-8">Muiz Banner Empire</p>
+
+          {loginError && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-semibold mb-6 text-center border border-red-100">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-slate-600 mb-1">Username</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <User size={18} />
+                </div>
+                <input 
+                  type="text" 
+                  name="username"
+                  value={loginData.username}
+                  onChange={handleLoginChange}
+                  className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  placeholder="Masukkan username"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-600 mb-1">Password</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Lock size={18} />
+                </div>
+                <input 
+                  type="password" 
+                  name="password"
+                  value={loginData.password}
+                  onChange={handleLoginChange}
+                  className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  placeholder="Masukkan password"
+                  required
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all"
+            >
+              Log Masuk
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Paparan sistem utama jika log masuk berjaya
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8 font-sans">
+      <div className="max-w-6xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-3">
+            <div className="bg-blue-600 p-3 rounded-xl text-white shadow-lg shadow-blue-200">
+              <Package size={32} />
+            </div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Sistem Import & Belian</h1>
+              <p className="text-slate-500 font-medium">Muiz Banner Empire</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setIsAuthenticated(false)}
+            className="flex items-center space-x-2 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 text-slate-600 px-4 py-2 rounded-lg transition-colors font-semibold shadow-sm"
+          >
+            <LogOut size={18} />
+            <span className="hidden sm:inline">Log Keluar</span>
+          </button>
+        </header>
+
+        {/* Statistik / Ringkasan */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+            <div className="bg-emerald-100 p-3 rounded-full text-emerald-600">
+              <TrendingUp size={24} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500 font-semibold">Jumlah Pelaburan (RM)</p>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalSpent}</p>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+            <div className="bg-blue-100 p-3 rounded-full text-blue-600">
+              <Box size={24} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500 font-semibold">Jumlah Kuantiti Barang</p>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalItems}</p>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+            <div className="bg-orange-100 p-3 rounded-full text-orange-600">
+              <Truck size={24} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500 font-semibold">Total Kos Pos/Kargo (RM)</p>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalShipping}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Kolum Kiri: Borang Kemasukan */}
+          <div className="lg:col-span-1">
+            <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 sticky top-8">
+              <h2 className="text-lg font-bold flex items-center mb-6 text-slate-800">
+                <Plus size={20} className="mr-2 text-blue-600" />
+                Rekod Belian Baru
+              </h2>
+              
+              <form onSubmit={handleSubmit} className="space-y-4">
+                
+                {/* Tarikh & Masa */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-600 mb-1">Tarikh & Masa</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Calendar size={18} />
+                    </div>
+                    <input 
+                      type="datetime-local" 
+                      name="dateTime"
+                      value={formData.dateTime}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Nama Barang */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-600 mb-1">Nama Barang</label>
+                  <input 
+                    type="text" 
+                    name="itemName"
+                    value={formData.itemName}
+                    onChange={handleChange}
+                    placeholder="Contoh: Banner Material 380gsm"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    required
+                  />
+                </div>
+
+                {/* Kuantiti */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-600 mb-1">Kuantiti (Pukal)</label>
+                  <input 
+                    type="number" 
+                    name="quantity"
+                    min="1"
+                    step="0.01"
+                    value={formData.quantity}
+                    onChange={handleChange}
+                    placeholder="0"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Harga Keseluruhan */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1">Kos Barang (RM)</label>
+                    <input 
+                      type="number" 
+                      name="itemCost"
+                      min="0"
+                      step="0.01"
+                      value={formData.itemCost}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                      required
+                    />
+                  </div>
+
+                  {/* Kos Penghantaran */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1">Kos Pos/Cukai (RM)</label>
+                    <input 
+                      type="number" 
+                      name="shippingCost"
+                      min="0"
+                      step="0.01"
+                      value={formData.shippingCost}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Kalkulator Automatik */}
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-semibold text-blue-800 flex items-center">
+                      <Calculator size={16} className="mr-1" />
+                      Harga Modal Sebiji
+                    </span>
+                  </div>
+                  <div className="text-3xl font-black text-blue-700 flex items-center">
+                    <span className="text-lg mr-1 text-blue-500">RM</span>
+                    {calculatedUnitCost}
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    (Kos Barang + Pos) ÷ Kuantiti
+                  </p>
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all flex justify-center items-center"
+                >
+                  <Plus size={20} className="mr-2" />
+                  Simpan Rekod Belian
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Kolum Kanan: Senarai Sejarah Pembelian */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 bg-white">
+                <h2 className="text-lg font-bold flex items-center text-slate-800">
+                  <History size={20} className="mr-2 text-blue-600" />
+                  Sejarah Belian
+                </h2>
+              </div>
+              
+              <div className="overflow-x-auto">
+                {records.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 flex flex-col items-center">
+                    <Package size={48} className="mb-4 text-slate-300" />
+                    <p>Tiada rekod belian buat masa ini.</p>
+                    <p className="text-sm mt-1">Sila tambah rekod di ruangan sebelah.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-sm">
+                        <th className="p-4 font-semibold whitespace-nowrap">Tarikh/Masa</th>
+                        <th className="p-4 font-semibold">Barang</th>
+                        <th className="p-4 font-semibold text-right">Modal Sebiji</th>
+                        <th className="p-4 font-semibold text-right">Kos Keseluruhan</th>
+                        <th className="p-4 font-semibold text-center">Tindakan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {records.map((record) => (
+                        <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4 text-sm whitespace-nowrap">
+                            {formatDate(record.dateTime)}
+                          </td>
+                          <td className="p-4">
+                            <div className="font-bold text-slate-800">{record.itemName}</div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              Kuantiti: {record.quantity} 
+                            </div>
+                          </td>
+                          <td className="p-4 text-right">
+                            <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg text-sm">
+                              RM {record.unitCost.toFixed(2)}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right text-sm">
+                            <div>RM {(record.itemCost + record.shippingCost).toFixed(2)}</div>
+                            <div className="text-xs text-slate-400 mt-1">
+                              (Kos: {record.itemCost.toFixed(2)} + Pos: {record.shippingCost.toFixed(2)})
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <button 
+                              onClick={() => deleteRecord(record.id)}
+                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Padam rekod"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  );
+}
